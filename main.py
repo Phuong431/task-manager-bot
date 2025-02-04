@@ -1,12 +1,13 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CallbackQueryHandler, MessageHandler, CommandHandler, Filters, CallbackContext
 import sqlite3
 from datetime import datetime
 import os
 import threading
 
 # Token của bot Telegram
-TOKEN = os.getenv("TOKEN")  # Lấy token từ biến môi trường  # Lấy token từ biến môi trường trên Render
+TOKEN = os.getenv("TOKEN")  # Lấy token từ biến môi trường trên Render
+
 # Kết nối database
 conn = sqlite3.connect("tasks.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -126,7 +127,7 @@ def main():
         port=PORT,
         url_path=TOKEN
     )
-    updater.bot.set_webhook(f"https://task-manager-bot-1.onrender.com/{TOKEN}")  # Thay <RENDER_URL> bằng URL của bạn
+    updater.bot.set_webhook(f"https://task-manager-bot-1.onrender.com/{TOKEN}")  # Thay <RENDER_URL> bằng URL Render
     updater.idle()
 
 if __name__ == "__main__":
