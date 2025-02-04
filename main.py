@@ -5,7 +5,7 @@ from datetime import datetime
 import time
 
 # Thay YOUR_BOT_TOKEN bằng token API của bạn
-TOKEN = "7849256875:AAEdZz3oRQ-YHOKqjOnY12f_L0PgMyLV57M"
+TOKEN = "7243466598:AAGWDoDcUT3j6xDaeU37RNFLlxSJceuO_IY"
 
 # Kết nối cơ sở dữ liệu SQLite
 conn = sqlite3.connect("tasks.db", check_same_thread=False)
