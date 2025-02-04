@@ -1,17 +1,17 @@
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Updater, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
 import sqlite3
 from datetime import datetime
-import time
+import os
 
-# Thay YOUR_BOT_TOKEN bằng token API của bạn
-TOKEN = "7243466598:AAGWDoDcUT3j6xDaeU37RNFLlxSJceuO_IY"
+# Token của bot Telegram
+TOKEN = os.getenv("TOKEN")  # Lấy token từ biến môi trường trên Render
 
-# Kết nối cơ sở dữ liệu SQLite
+# Kết nối database
 conn = sqlite3.connect("tasks.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Tạo bảng công việc
+# Tạo bảng lưu công việc
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,72 +24,27 @@ CREATE TABLE IF NOT EXISTS tasks (
 ''')
 conn.commit()
 
-# Lệnh /start: Chào mừng người dùng
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text(
-        "Xin chào! Tôi là bot quản lý công việc.\n"
-        "Các lệnh bạn có thể sử dụng:\n"
-        "• /add [Mô tả công việc] - Thêm công việc mới\n"
-        "• /done [ID công việc] - Đánh dấu công việc hoàn thành\n"
-        "• /view - Xem công việc hôm nay\n"
-        "• /report - Báo cáo công việc tháng này\n"
-    )
-
-# Lệnh /add: Thêm công việc mới
-def add_task(update: Update, context: CallbackContext):
+# Xử lý tin nhắn người dùng gửi
+def handle_message(update: Update, context: CallbackContext):
     user_id = update.message.chat_id
-    text = " ".join(context.args)
+    text = update.message.text.strip()
 
-    if not text:
-        update.message.reply_text("⚠️ Vui lòng nhập mô tả công việc. Ví dụ: `/add Làm báo cáo`")
-        return
-
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Thời gian hiện tại
+    # Thêm công việc mới
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute('''
-    INSERT INTO tasks (user_id, description, created_at, status) VALUES (?, ?, ?, ?)
+    INSERT INTO tasks (user_id, description, created_at, status)
+    VALUES (?, ?, ?, ?)
     ''', (user_id, text, created_at, "Pending"))
     conn.commit()
 
-    update.message.reply_text(f"✅ Ghi nhận công việc: {text} (Tạo lúc: {created_at})")
-
-# Lệnh /done: Đánh dấu công việc hoàn thành
-def mark_done(update: Update, context: CallbackContext):
-    user_id = update.message.chat_id
-    task_id = " ".join(context.args)
-
-    if not task_id.isdigit():
-        update.message.reply_text("⚠️ Vui lòng nhập ID công việc bạn muốn đánh dấu hoàn thành.")
-        return
-
-    completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Thời gian hoàn thành
-    cursor.execute('''
-    SELECT created_at FROM tasks WHERE id = ? AND user_id = ? AND status = "Pending"
-    ''', (task_id, user_id))
-    task = cursor.fetchone()
-
-    if not task:
-        update.message.reply_text(f"⚠️ Không tìm thấy công việc với ID {task_id}.")
-        return
-
-    created_at = datetime.strptime(task[0], "%Y-%m-%d %H:%M:%S")
-    completed_at_dt = datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S")
-    time_taken = completed_at_dt - created_at  # Tính tổng thời gian hoàn thành
-
-    cursor.execute('''
-    UPDATE tasks SET status = "Done", completed_at = ? WHERE id = ? AND user_id = ?
-    ''', (completed_at, task_id, user_id))
-    conn.commit()
-
     update.message.reply_text(
-        f"✅ Công việc ID {task_id} đã hoàn thành.\n"
-        f"⏰ Tổng thời gian hoàn thành: {time_taken}."
+        f"✅ Đã ghi nhận công việc: {text}\n"
+        f"📅 Tạo lúc: {created_at}"
     )
 
-# Lệnh /view: Xem công việc hôm nay
+# Xem danh sách công việc chưa hoàn thành
 def view_tasks(update: Update, context: CallbackContext):
     user_id = update.message.chat_id
-    today = datetime.now().strftime("%Y-%m-%d")
-
     cursor.execute('''
     SELECT id, description, created_at FROM tasks
     WHERE user_id = ? AND status = "Pending"
@@ -97,56 +52,79 @@ def view_tasks(update: Update, context: CallbackContext):
     tasks = cursor.fetchall()
 
     if not tasks:
-        update.message.reply_text("📋 Bạn không có công việc nào cần làm hôm nay.")
-    else:
-        message = "**📋 Công việc cần làm hôm nay:**\n"
-        for task in tasks:
-            message += f"• ID {task[0]}: {task[1]} (Tạo lúc: {task[2]})\n"
-        update.message.reply_text(message, parse_mode="Markdown")
+        update.message.reply_text("🎉 Bạn không có công việc nào đang chờ xử lý.")
+        return
 
-# Lệnh /report: Báo cáo công việc hàng tháng
+    # Tạo danh sách nút chọn để hoàn thành công việc
+    keyboard = [
+        [InlineKeyboardButton(f"✅ {task[1]} (Tạo lúc: {task[2]})", callback_data=f"complete:{task[0]}")]
+        for task in tasks
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text(
+        "📋 Danh sách công việc chờ hoàn thành:",
+        reply_markup=reply_markup
+    )
+
+# Đánh dấu hoàn thành công việc
+def complete_task(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    task_id = query.data.split(":")[1]
+
+    completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+    UPDATE tasks
+    SET status = "Completed", completed_at = ?
+    WHERE id = ?
+    ''', (completed_at, task_id))
+    conn.commit()
+
+    query.edit_message_text(
+        text=f"🎉 Công việc đã hoàn thành! (ID: {task_id})\n"
+        f"⏰ Hoàn thành lúc: {completed_at}"
+    )
+
+# Báo cáo tổng công việc theo trạng thái
 def report(update: Update, context: CallbackContext):
     user_id = update.message.chat_id
-    current_month = datetime.now().strftime("%Y-%m")
-
     cursor.execute('''
-    SELECT description, created_at, completed_at, status FROM tasks
-    WHERE user_id = ? AND strftime('%Y-%m', created_at) = ?
-    ''', (user_id, current_month))
-    tasks = cursor.fetchall()
+    SELECT status, COUNT(*) FROM tasks
+    WHERE user_id = ?
+    GROUP BY status
+    ''', (user_id,))
+    data = cursor.fetchall()
 
-    if not tasks:
-        update.message.reply_text("📊 Không có công việc nào trong tháng này.")
-    else:
-        message = "**📊 Báo cáo công việc tháng này:**\n"
-        for task in tasks:
-            message += f"• {task[0]} (Tạo: {task[1]}, Hoàn thành: {task[2]}, Trạng thái: {task[3]})\n"
-        update.message.reply_text(message, parse_mode="Markdown")
+    report_text = "**📊 Báo cáo công việc:**\n"
+    total_tasks = 0
+    for status, count in data:
+        report_text += f"• {status}: {count} công việc\n"
+        total_tasks += count
 
-# Khởi chạy bot
+    report_text += f"\n**Tổng cộng:** {total_tasks} công việc"
+    update.message.reply_text(report_text, parse_mode="Markdown")
+
+# Cấu hình bot
 def main():
     updater = Updater(TOKEN, use_context=True)
     dispatcher = updater.dispatcher
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("add", add_task))
-    dispatcher.add_handler(CommandHandler("done", mark_done))
-    dispatcher.add_handler(CommandHandler("view", view_tasks))
-    dispatcher.add_handler(CommandHandler("report", report))
+    # Xử lý tin nhắn
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
+    # Lệnh /view: Xem công việc chờ xử lý
+    dispatcher.add_handler(MessageHandler(Filters.regex(r"^Xem danh sách công việc$"), view_tasks))
+
+    # Callback khi chọn hoàn thành công việc
+    dispatcher.add_handler(CallbackQueryHandler(complete_task, pattern=r"^complete:\d+$"))
+
+    # Lệnh /report: Báo cáo tổng công việc
+    dispatcher.add_handler(MessageHandler(Filters.regex(r"^Báo cáo công việc$"), report))
+
+    # Khởi chạy bot
     updater.start_polling()
     updater.idle()
 
 if __name__ == "__main__":
     main()
-import os
-
-PORT = int(os.environ.get('PORT', '8443'))
-updater.start_webhook(
-    listen="0.0.0.0",
-    port=PORT,
-    url_path=TOKEN
-)
-updater.bot.set_webhook(f"https://<https://task-manager-bot-1.onrender.com>/{TOKEN}")
-updater.idle()
-
