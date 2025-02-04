@@ -139,4 +139,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+import os
+
+PORT = int(os.environ.get('PORT', '8443'))
+updater.start_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TOKEN
+)
+updater.bot.set_webhook(f"https://<https://task-manager-bot-1.onrender.com>/{TOKEN}")
+updater.idle()
 
